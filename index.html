@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar System | Earth's Orbit Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: #fff;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        #hero {
+            height: 100vh;
+            width: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        #hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, #0f2027 70%);
+            z-index: 1;
+        }
+
+        #hero-content {
+            position: relative;
+            z-index: 10;
+            max-width: 800px;
+            padding: 20px;
+        }
+
+        #hero h1 {
+            font-size: 4.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(to right, #ff8a00, #da1b60);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        #hero p {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 15px 35px;
+            background: linear-gradient(to right, #ff8a00, #da1b60);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #ff8a00;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .section {
+            min-height: 100vh;
+            padding: 100px 10%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        .section:nth-child(even) {
+            background: rgba(15, 32, 39, 0.7);
+        }
+
+        .section-title {
+            font-size: 3rem;
+            margin-bottom: 3rem;
+            position: relative;
+            display: inline-block;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 0;
+            width: 100px;
+            height: 4px;
+            background: linear-gradient(to right, #ff8a00, #da1b60);
+            border-radius: 2px;
+        }
+
+        .content-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 50px;
+            flex-wrap: wrap;
+        }
+
+        .text-content {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .text-content h3 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            color: #ff8a00;
+        }
+
+        .text-content p {
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s;
+        }
+
+        .info-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .info-card i {
+            font-size: 2.5rem;
+            color: #ff8a00;
+            margin-bottom: 15px;
+        }
+
+        .info-card h4 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .visualization {
+            flex: 1;
+            min-width: 300px;
+            height: 400px;
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .mini-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .comparison-chart {
+            width: 100%;
+            margin: 40px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 30px;
+        }
+
+        .chart-row {
+            display: flex;
+            margin: 20px 0;
+            align-items: center;
+        }
+
+        .chart-label {
+            width: 150px;
+            font-weight: bold;
+        }
+
+        .chart-bar {
+            flex-grow: 1;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .chart-fill {
+            height: 100%;
+            background: linear-gradient(to right, #ff8a00, #da1b60);
+            border-radius: 15px;
+            position: relative;
+        }
+
+        .chart-value {
+            position: absolute;
+            right: 15px;
+            top: 5px;
+            color: white;
+            font-weight: bold;
+        }
+
+        footer {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 40px 10%;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .creator {
+            font-size: 1.2rem;
+            margin-top: 20px;
+            color: #ff8a00;
+        }
+
+        .creator-name {
+            font-weight: bold;
+            font-size: 1.4rem;
+            letter-spacing: 1px;
+        }
+
+        .scroll-down {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {transform: translateY(0) translateX(-50%);}
+            40% {transform: translateY(-20px) translateX(-50%);}
+            60% {transform: translateY(-10px) translateX(-50%);}
+        }
+
+        @media (max-width: 768px) {
+            #hero h1 {
+                font-size: 3rem;
+            }
+            
+            .section-title {
+                font-size: 2.5rem;
+            }
+            
+            .content-wrapper {
+                flex-direction: column;
+            }
+            
+            .visualization {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section id="hero">
+        <div id="canvas-container"></div>
+        <div id="hero-content">
+            <h1>SOLAR SYSTEM DYNAMICS</h1>
+            <p>Visualizing Earth's Orbit Around the Sun in 3D Space</p>
+            <div>
+                <a href="#solar-system" class="btn">Explore the Orbit</a>
+                <a href="#earth-details" class="btn btn-outline">Learn About Earth</a>
+            </div>
+        </div>
+        <div class="scroll-down">
+            <i class="fas fa-chevron-down fa-2x"></i>
+        </div>
+    </section>
+
+    <section id="solar-system" class="section">
+        <h2 class="section-title">The Solar System</h2>
+        <div class="content-wrapper">
+            <div class="text-content">
+                <h3>Earth's Orbit Around the Sun</h3>
+                <p>Earth orbits the Sun at an average distance of about 149.6 million kilometers (92.96 million miles). This distance is defined as one Astronomical Unit (AU).</p>
+                <p>Earth completes one orbit around the Sun every 365.256 days, which is the basis for our calendar year. The orbital path is elliptical rather than circular, with an eccentricity of 0.0167.</p>
+                <p>The combination of Earth's orbital motion around the Sun and its axial tilt of approximately 23.5 degrees relative to its orbital plane creates the seasonal variations we experience throughout the year.</p>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <i class="fas fa-road"></i>
+                        <h4>Orbital Circumference</h4>
+                        <p>940 million km (584 million mi)</p>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-gauge-high"></i>
+                        <h4>Orbital Speed</h4>
+                        <p>107,000 km/h (66,600 mph)</p>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-calendar-day"></i>
+                        <h4>Orbital Period</h4>
+                        <p>365.256 days (1 year)</p>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-sun"></i>
+                        <h4>Solar Energy</h4>
+                        <p>1,360 W/m² at Earth's distance</p>
+                    </div>
+                </div>
+            </div>
+            <div class="visualization">
+                <div id="orbit-canvas" class="mini-canvas"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="earth-details" class="section">
+        <h2 class="section-title">Planet Earth</h2>
+        <div class="content-wrapper">
+            <div class="visualization">
+                <div id="earth-canvas" class="mini-canvas"></div>
+            </div>
+            <div class="text-content">
+                <h3>Our Home Planet</h3>
+                <p>Earth is the third planet from the Sun and the only astronomical object known to harbor life. About 29.2% of Earth's surface is land consisting of continents and islands, while the remaining 70.8% is covered with water.</p>
+                <p>Earth's outer layer is divided into several rigid tectonic plates that migrate across the surface over many millions of years. Earth's interior remains active with a solid iron inner core, a liquid outer core that generates Earth's magnetic field, and a convecting mantle that drives plate tectonics.</p>
+                
+                <div class="comparison-chart">
+                    <h4>Earth Characteristics</h4>
+                    <div class="chart-row">
+                        <div class="chart-label">Diameter</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 100%">
+                                <span class="chart-value">12,742 km</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <div class="chart-label">Mass</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 100%">
+                                <span class="chart-value">5.97 × 10²⁴ kg</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <div class="chart-label">Surface Gravity</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 100%">
+                                <span class="chart-value">9.8 m/s²</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <div class="chart-label">Axial Tilt</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 23.5%">
+                                <span class="chart-value">23.5°</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="sun-details" class="section">
+        <h2 class="section-title">The Sun</h2>
+        <div class="content-wrapper">
+            <div class="text-content">
+                <h3>The Heart of Our Solar System</h3>
+                <p>The Sun is the star at the center of the Solar System. It is a nearly perfect sphere of hot plasma, heated to incandescence by nuclear fusion reactions in its core, radiating the energy mainly as visible light and infrared radiation.</p>
+                <p>It contains 99.86% of the total mass of the Solar System. Roughly three quarters of the Sun's mass consists of hydrogen (~73%); the rest is mostly helium (~25%), with much smaller quantities of heavier elements, including oxygen, carbon, neon, and iron.</p>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <i class="fas fa-weight-scale"></i>
+                        <h4>Mass</h4>
+                        <p>1.989 × 10³⁰ kg (333,000 Earths)</p>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-ruler"></i>
+                        <h4>Diameter</h4>
+                        <p>1.3927 million km (109 × Earth)</p>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-fire"></i>
+                        <h4>Surface Temperature</h4>
+                        <p>5,500°C (9,932°F)</p>
+                    </div>
+                    <div class="info-card">
+                        <i class="fas fa-atom"></i>
+                        <h4>Core Temperature</h4>
+                        <p>15 million °C (27 million °F)</p>
+                    </div>
+                </div>
+            </div>
+            <div class="visualization">
+                <div id="sun-canvas" class="mini-canvas"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="dynamics" class="section">
+        <h2 class="section-title">Orbital Dynamics</h2>
+        <div class="content-wrapper">
+            <div class="visualization">
+                <div id="dynamics-canvas" class="mini-canvas"></div>
+            </div>
+            <div class="text-content">
+                <h3>Gravitational Dance</h3>
+                <p>The motion of Earth around the Sun is governed by the fundamental laws of gravity and motion established by Isaac Newton. The gravitational force between Earth and the Sun provides the centripetal force necessary for Earth's orbital motion.</p>
+                <p>Earth's orbit is not a perfect circle but an ellipse, with the Sun at one focus. This elliptical orbit means Earth's distance from the Sun varies throughout the year, with the closest approach (perihelion) occurring around January 3 and the farthest distance (aphelion) around July 4.</p>
+                
+                <div class="comparison-chart">
+                    <h4>Orbital Characteristics</h4>
+                    <div class="chart-row">
+                        <div class="chart-label">Perihelion</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 98%">
+                                <span class="chart-value">147.1 million km</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <div class="chart-label">Aphelion</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 100%">
+                                <span class="chart-value">152.1 million km</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <div class="chart-label">Orbital Eccentricity</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 1.67%">
+                                <span class="chart-value">0.0167</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-row">
+                        <div class="chart-label">Inclination to Ecliptic</div>
+                        <div class="chart-bar">
+                            <div class="chart-fill" style="width: 0.1%">
+                                <span class="chart-value">0.00005°</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="social-links">
+            <a href="#"><i class="fab fa-github fa-2x"></i></a>
+            <a href="#"><i class="fab fa-linkedin fa-2x"></i></a>
+            <a href="#"><i class="fab fa-twitter fa-2x"></i></a>
+        </div>
+        <p>Solar System Visualization Project | Scientific Data from NASA</p>
+        <div class="creator">
+            Created by <span class="creator-name">Prabir Dhar</span>
+        </div>
+    </footer>
+
+    <script>
+        // Main scene setup
+        let scene, camera, renderer, sun, earth, earthOrbit;
+        
+        // Initialize main scene
+        function initMainScene() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000814);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 20);
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            
+            // Add stars
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xFFFFFF,
+                size: 0.1,
+                transparent: true
+            });
+            
+            const starsVertices = [];
+            for (let i = 0; i < 10000; i++) {
+                const x = (Math.random() - 0.5) * 2000;
+                const y = (Math.random() - 0.5) * 2000;
+                const z = (Math.random() - 0.5) * 2000;
+                starsVertices.push(x, y, z);
+            }
+            
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            const starField = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starField);
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x333333);
+            scene.add(ambientLight);
+            
+            // Create sun
+            const sunGeometry = new THREE.SphereGeometry(3, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFDB813,
+                emissive: 0xFDB813,
+                emissiveIntensity: 1
+            });
+            sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sun);
+            
+            // Create sun glow
+            const sunGlowGeometry = new THREE.SphereGeometry(3.2, 32, 32);
+            const sunGlowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFDB813,
+                transparent: true,
+                opacity: 0.3
+            });
+            const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+            scene.add(sunGlow);
+            
+            // Create earth orbit
+            earthOrbit = new THREE.Object3D();
+            scene.add(earthOrbit);
+            
+            // Create earth
+            const earthGeometry = new THREE.SphereGeometry(1, 32, 32);
+            const earthMaterial = new THREE.MeshLambertMaterial({
+                color: 0x3498DB,
+                emissive: 0x072534,
+                emissiveIntensity: 0.5
+            });
+            earth = new THREE.Mesh(earthGeometry, earthMaterial);
+            earth.position.set(10, 0, 0);
+            earthOrbit.add(earth);
+            
+            // Add directional light from sun
+            const sunLight = new THREE.PointLight(0xFFFFFF, 1.5);
+            sun.add(sunLight);
+            
+            // Add orbit path
+            const orbitPath = new THREE.EllipseCurve(
+                0, 0,            // centerX, centerY
+                10, 10,          // xRadius, yRadius
+                0, 2 * Math.PI,  // startAngle, endAngle
+                false,           // clockwise
+                0                // rotation
+            );
+            
+            const orbitPoints = orbitPath.getPoints(100);
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+            const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.3 });
+            const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+            orbitLine.rotation.x = Math.PI / 2;
+            scene.add(orbitLine);
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize);
+            
+            // Start animation
+            animate();
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate sun
+            sun.rotation.y += 0.002;
+            
+            // Rotate earth
+            earth.rotation.y += 0.01;
+            
+            // Rotate earth around sun
+            earthOrbit.rotation.y += 0.005;
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Initialize the scene when page loads
+        window.addEventListener('load', initMainScene);
+        
+        // Initialize mini visualizations
+        function initMiniScenes() {
+            initMiniScene('orbit-canvas', createOrbitScene);
+            initMiniScene('earth-canvas', createEarthScene);
+            initMiniScene('sun-canvas', createSunScene);
+            initMiniScene('dynamics-canvas', createDynamicsScene);
+        }
+        
+        function initMiniScene(canvasId, sceneCreator) {
+            const container = document.getElementById(canvasId);
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            // Create scene
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a192f);
+            
+            // Create camera
+            const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+            camera.position.z = 15;
+            
+            // Create renderer
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            // Create scene content
+            sceneCreator(scene);
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x333333);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 1);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            }
+            
+            animate();
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+        }
+        
+        function createOrbitScene(scene) {
+            // Create sun
+            const sunGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFDB813 });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sun);
+            
+            // Create earth
+            const earthGeometry = new THREE.SphereGeometry(0.7, 32, 32);
+            const earthMaterial = new THREE.MeshLambertMaterial({ color: 0x3498DB });
+            const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+            earth.position.set(6, 0, 0);
+            scene.add(earth);
+            
+            // Create orbit path
+            const orbitPath = new THREE.EllipseCurve(
+                0, 0,            // centerX, centerY
+                6, 6,            // xRadius, yRadius
+                0, 2 * Math.PI,  // startAngle, endAngle
+                false,           // clockwise
+                0                // rotation
+            );
+            
+            const orbitPoints = orbitPath.getPoints(100);
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+            const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.3 });
+            const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+            orbitLine.rotation.x = Math.PI / 2;
+            scene.add(orbitLine);
+            
+            // Animation
+            let angle = 0;
+            function animateOrbit() {
+                requestAnimationFrame(animateOrbit);
+                angle += 0.01;
+                earth.position.x = 6 * Math.cos(angle);
+                earth.position.z = 6 * Math.sin(angle);
+            }
+            animateOrbit();
+        }
+        
+        function createEarthScene(scene) {
+            // Create earth
+            const earthGeometry = new THREE.SphereGeometry(3, 32, 32);
+            const earthMaterial = new THREE.MeshLambertMaterial({ color: 0x3498DB });
+            const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+            scene.add(earth);
+            
+            // Add clouds as a separate sphere
+            const cloudGeometry = new THREE.SphereGeometry(3.05, 32, 32);
+            const cloudMaterial = new THREE.MeshLambertMaterial({
+                color: 0xFFFFFF,
+                transparent: true,
+                opacity: 0.3
+            });
+            const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+            scene.add(clouds);
+            
+            // Create moon
+            const moonGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const moonMaterial = new THREE.MeshLambertMaterial({ color: 0xDDDDDD });
+            const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+            moon.position.set(6, 0, 0);
+            scene.add(moon);
+            
+            // Create moon orbit
+            const orbitPath = new THREE.EllipseCurve(
+                0, 0,            // centerX, centerY
+                6, 6,            // xRadius, yRadius
+                0, 2 * Math.PI,  // startAngle, endAngle
+                false,           // clockwise
+                0                // rotation
+            );
+            
+            const orbitPoints = orbitPath.getPoints(50);
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+            const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.2 });
+            const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+            orbitLine.rotation.x = Math.PI / 2;
+            scene.add(orbitLine);
+            
+            // Animation
+            function animateEarth() {
+                requestAnimationFrame(animateEarth);
+                earth.rotation.y += 0.01;
+                clouds.rotation.y += 0.011;
+                
+                // Rotate moon around earth
+                moon.position.x = 6 * Math.cos(performance.now() * 0.001);
+                moon.position.z = 6 * Math.sin(performance.now() * 0.001);
+            }
+            animateEarth();
+        }
+        
+        function createSunScene(scene) {
+            // Create sun
+            const sunGeometry = new THREE.SphereGeometry(3, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xFDB813,
+                emissive: 0xFDB813,
+                emissiveIntensity: 0.5
+            });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sun);
+            
+            // Add corona effect
+            const coronaGeometry = new THREE.SphereGeometry(3.3, 32, 32);
+            const coronaMaterial = new THREE.MeshBasicMaterial({
+                color: 0xFF5722,
+                transparent: true,
+                opacity: 0.3
+            });
+            const corona = new THREE.Mesh(coronaGeometry, coronaMaterial);
+            scene.add(corona);
+            
+            // Animation
+            function animateSun() {
+                requestAnimationFrame(animateSun);
+                sun.rotation.y += 0.005;
+                corona.rotation.y -= 0.003;
+            }
+            animateSun();
+        }
+        
+        function createDynamicsScene(scene) {
+            // Create sun
+            const sunGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xFDB813 });
+            const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sun);
+            
+            // Create elliptical orbit
+            const orbitPath = new THREE.EllipseCurve(
+                0, 0,            // centerX, centerY
+                8, 6,            // xRadius, yRadius
+                0, 2 * Math.PI,  // startAngle, endAngle
+                false,           // clockwise
+                0                // rotation
+            );
+            
+            const orbitPoints = orbitPath.getPoints(100);
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+            const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 0.3 });
+            const orbitLine = new THREE.Line(orbitGeometry, orbitMaterial);
+            orbitLine.rotation.x = Math.PI / 2;
+            scene.add(orbitLine);
+            
+            // Create earth
+            const earthGeometry = new THREE.SphereGeometry(0.7, 32, 32);
+            const earthMaterial = new THREE.MeshLambertMaterial({ color: 0x3498DB });
+            const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+            scene.add(earth);
+            
+            // Create velocity vector
+            const velocityVector = new THREE.ArrowHelper(
+                new THREE.Vector3(0, 1, 0),
+                new THREE.Vector3(0, 0, 0),
+                3,
+                0xFF0000
+            );
+            scene.add(velocityVector);
+            
+            // Create gravitational force vector
+            const gravityVector = new THREE.ArrowHelper(
+                new THREE.Vector3(0, -1, 0),
+                new THREE.Vector3(0, 0, 0),
+                2,
+                0x00FF00
+            );
+            scene.add(gravityVector);
+            
+            // Animation
+            let angle = 0;
+            function animateDynamics() {
+                requestAnimationFrame(animateDynamics);
+                
+                // Update earth position
+                angle += 0.01;
+                const x = 8 * Math.cos(angle);
+                const z = 6 * Math.sin(angle);
+                earth.position.set(x, 0, z);
+                
+                // Update velocity vector (tangent to orbit)
+                const tangent = new THREE.Vector3(-z, 0, x).normalize();
+                velocityVector.position.copy(earth.position);
+                velocityVector.setDirection(tangent);
+                
+                // Update gravity vector (toward sun)
+                const toSun = new THREE.Vector3().subVectors(sun.position, earth.position).normalize();
+                gravityVector.position.copy(earth.position);
+                gravityVector.setDirection(toSun);
+            }
+            animateDynamics();
+        }
+        
+        // Initialize mini scenes when page loads
+        window.addEventListener('load', initMiniScenes);
+        
+        // Add scroll reveal effect
+        function initScrollReveal() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
+                });
+            }, { threshold: 0.1 });
+            
+            document.querySelectorAll('.section').forEach(section => {
+                observer.observe(section);
+            });
+        }
+        
+        window.addEventListener('load', initScrollReveal);
+    </script>
+</body>
+</html>
