@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Neon Z-Type — Typing Shooter</title>
+<style>
+  :root{
+    --bg:#01020a; --neon:#00e5ff; --accent:#ff4dff; --muted:#9aa4b2; --danger:#ff6161;
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial;
+  }
+  html,body{height:100%;margin:0;background:radial-gradient(ellipse at bottom,#08101a 0%, var(--bg) 60%),#000;color:var(--muted);-webkit-font-smoothing:antialiased}
+  .ui{position:fixed;left:12px;top:12px;z-index:50;display:flex;gap:8px;align-items:center}
+  .chip{background:rgba(255,255,255,0.02);border-radius:8px;padding:8px 10px;color:var(--neon);font-weight:700;backdrop-filter:blur(4px)}
+  .controls{position:fixed;right:12px;top:12px;display:flex;gap:8px;z-index:50}
+  button{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--neon);padding:8px 12px;border-radius:10px;cursor:pointer}
+  button.secondary{color:var(--muted);border-color:rgba(255,255,255,0.02)}
+  #canvasWrap{width:100%;height:100vh;display:block;position:relative}
+  canvas{display:block;width:100%;height:100vh}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:40}
+  .menu{pointer-events:auto;background:linear-gradient(180deg,rgba(6,8,12,0.95),rgba(3,4,8,0.9));padding:18px;border-radius:12px;min-width:300px;border:1px solid rgba(255,255,255,0.03);text-align:center}
+  h1{color:var(--neon);margin:0 0 6px 0;font-size:20px}
+  p.small{color:var(--muted);margin:0;font-size:13px}
+  input[type=text]{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--neon)}
+  ol{padding-left:16px;text-align:left;max-height:200px;overflow:auto}
+  @media (max-width:700px){ .menu{min-width:88%} }
+</style>
+</head>
+<body>
+  <div id="canvasWrap">
+    <canvas id="c"></canvas>
+
+    <div class="ui">
+      <div class="chip">Score: <span id="uiScore">0</span></div>
+      <div class="chip">HP: <span id="uiHp">5</span></div>
+      <div class="chip">Level: <span id="uiLevel">1</span></div>
+    </div>
+
+    <div class="controls">
+      <button id="btnStart">Start</button>
+      <button id="btnPause" class="secondary">Pause</button>
+      <button id="btnLB" class="secondary">Leaderboard</button>
+      <button id="btnMute" class="secondary">Mute</button>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="menu" id="menuStart">
+        <h1>Neon Z-Type</h1>
+        <p class="small">Type falling words to shoot them. Press the correct letter to fire a light beam from the triangle ship and remove letters.</p>
+        <div style="margin-top:12px;display:flex;gap:8px;justify-content:center">
+          <button id="playLarge">Play</button>
+          <button id="howBtn" class="secondary">How to Play</button>
+        </div>
+      </div>
+
+      <div class="menu" id="menuPause" style="display:none">
+        <h1>Paused</h1>
+        <div style="margin-top:12px"><button id="resumeBtn">Resume</button> <button id="restartBtn" class="secondary">Restart</button></div>
+      </div>
+
+      <div class="menu" id="menuGameOver" style="display:none">
+        <h1>Game Over</h1>
+        <p id="gameOverSummary" class="small">Score: 0</p>
+        <div style="margin-top:10px"><input id="playerName" placeholder="Your name (max 12)" maxlength="12"/></div>
+        <div style="margin-top:12px"><button id="saveScore">Save</button> <button id="toMenu" class="secondary">Main Menu</button></div>
+      </div>
+
+      <div class="menu" id="menuHow" style="display:none">
+        <h1>How to Play</h1>
+        <p class="small">Type letters. When you type a correct letter (matching a letter in a word) a beam fires from the triangle to that exact letter and removes it. Destroy full words for points. Survive waves!</p>
+        <div style="margin-top:12px"><button id="howClose" class="secondary">Close</button></div>
+      </div>
+
+      <div class="menu" id="menuLB" style="display:none">
+        <h1>Leaderboard</h1>
+        <ol id="leaderList"></ol>
+        <div style="margin-top:12px"><button id="lbClose" class="secondary">Close</button></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* -----------------------------
+   Neon Z-Type — Full Game
+   Single-file HTML5 Canvas
+   ----------------------------- */
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W = 0, H = 0;
+function resize(){
+  const dpr = window.devicePixelRatio || 1;
+  W = canvas.clientWidth = canvas.width = Math.max(800, innerWidth * dpr);
+  H = canvas.clientHeight = Math.max(400, innerHeight * dpr);
+  canvas.style.width = '100%';
+  canvas.style.height = '100vh';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize', ()=>{ resize(); generateStarfield(); });
+
+resize();
+
+/* ---------- Game config ---------- */
+const CONFIG = {
+  spawnInterval: 1500,  // ms
+  baseSpeed: 28,        // px/sec
+  speedGrowth: 1.06,    // per level
+  maxWords: 12,
+  hp: 5
+};
+
+/* ---------- Asset: words ---------- */
+const WORDS = [
+  'NEON','CYBER','GALAXY','ASTEROID','BLACKHOLE','COMET','SUPERNOVA','ORBIT','QUANTUM','VELOCITY',
+  'SPECTRUM','GLITCH','PHOTON','BINARY','NOVA','ECLIPSE','HORIZON','PLASMA','NEBULA','FUSION',
+  'VECTOR','PROTO','SYNTH','ION','SPARK','PULSE','ROCKET','VEGA','ZETA','OMEGA',
+  'COSMOS','STARSHIP','HYPER','TACHYON','GRAVITY','LUNAR','SOLAR','SATELLITE','ECHO','AURORA',
+  'DRIFT','ANTIMATTER','ORIGIN','MODULE','ANCHOR','CRYSTAL','PRISM','MIRAGE','HAZE','EMBER'
+];
+
+/* ---------- Visual background: stars, planets, black hole ---------- */
+let stars = [];
+let planets = [];
+let blackHole = { x: 0.5, y: 0.45, r: 120 }; // normalized coords
+
+function generateStarfield(){
+  stars = [];
+  const count = Math.round((innerWidth*innerHeight)/6000);
+  for(let i=0;i<count;i++){
+    stars.push({ x: Math.random()*innerWidth, y: Math.random()*innerHeight, r: Math.random()*1.6 + 0.2, tw: Math.random()*2+0.5 });
+  }
+  planets = [];
+  const pcount = 3;
+  for(let i=0;i<pcount;i++){
+    planets.push({
+      x: Math.random()*innerWidth,
+      y: Math.random()*innerHeight*0.6,
+      r: 40 + Math.random()*70,
+      color: `hsl(${Math.floor(Math.random()*360)}, 70%, ${40 + Math.random()*20}%)`,
+      spin: Math.random()*0.02 - 0.01
+    });
+  }
+}
+generateStarfield();
+
+/* ---------- Game state ---------- */
+let state = {
+  running: false,
+  paused: false,
+  words: [],      // {id,text,x,y,speed,font, matchedIndices:[]}
+  beams: [],      // beam instances travelling to letter {x0,y0,tx,ty,progress,letterIndex,wordId,color}
+  particles: [],
+  bullets: [],    // not used for core (we use beams)
+  lastSpawn: 0,
+  lastTime: performance.now(),
+  score: 0,
+  hp: CONFIG.hp,
+  level: 1,
+  mute: false,
+  musicOn: true
+};
+
+/* ---------- ship (triangle) ---------- */
+function shipX(){ return innerWidth/2; }
+function shipY(){ return innerHeight - 60; }
+
+/* ---------- audio (tiny) ---------- */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function ensureAudio(){ if(!audioCtx) audioCtx = new AudioCtx(); }
+function playTone(freq=880, dur=0.06, type='sine', vol=0.03){
+  if(state.mute) return;
+  ensureAudio();
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq; g.gain.value = vol;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function playShot(){ playTone(1400, 0.03, 'square', 0.02); }
+function playExplosion(){ playTone(160, 0.16, 'sawtooth', 0.06); }
+
+/* ---------- spawn words ---------- */
+function spawnWord(){
+  if(state.words.length >= CONFIG.maxWords) return;
+  const text = WORDS[Math.floor(Math.random()*WORDS.length)];
+  const fontSize = 22 + Math.floor(Math.random()*14);
+  // compute approx width to avoid overflow
+  const padding = 40;
+  const x = padding + Math.random() * (innerWidth - padding*2);
+  const y = -30 - Math.random()*80;
+  const speed = CONFIG.baseSpeed * Math.pow(CONFIG.speedGrowth, state.level-1) * (0.85 + Math.random()*0.9);
+  state.words.push({ id: Math.random().toString(36).slice(2,9), text, letters: text.split(''), x, y, speed, fontSize });
+}
+
+/* ---------- beams ---------- */
+/* Beam animation is luminous, curved slight trail => we implement progress 0..1 */
+function fireBeamToLetter(word, letterIndex){
+  // compute letter target coordinates
+  ctx.font = `600 ${word.fontSize}px Inter, Arial`;
+  const baseX = word.x;
+  // position letters spaced by measured widths
+  // simpler: measure each char width and compute cumulative.
+  const letters = word.letters;
+  let sx = 0;
+  let targetX = baseX;
+  for(let i=0;i<letterIndex;i++){
+    const w = ctx.measureText(letters[i]).width;
+    sx += w;
+  }
+  const wLetter = ctx.measureText(letters[letterIndex]).width;
+  targetX = baseX + sx + wLetter/2;
+  const targetY = word.y - (word.fontSize / 3);
+
+  const b = {
+    x0: shipX(), y0: shipY()-8,
+    tx: targetX, ty: targetY,
+    progress: 0,
+    speed: 0.02 + Math.random()*0.012, // progress per frame
+    wordId: word.id,
+    letterIndex,
+    color: '#7efcff'
+  };
+  state.beams.push(b);
+  playShot();
+}
+
+/* ---------- particles for explosion ---------- */
+function spawnExplosion(x,y, color='#ff88aa'){
+  for(let i=0;i<18;i++){
+    state.particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*260,
+      vy: (Math.random()-1.5)*200,
+      life: 0.5 + Math.random()*0.9,
+      age: 0,
+      color
+    });
+  }
+  playExplosion();
+}
+
+/* ---------- input handling ---------- */
+/* On key press: find matching word/letter.
+   Strategy: prefer word with smallest distance to bottom (largest y) that contains this letter as its next unmatched char.
+   Also we want typing to be intuitive: attempt to match letter anywhere in word, but commonly Z-Type matches the first unmatched letter per target. We'll find words where first unmatched letter == key, prioritize by y (descending).
+*/
+window.addEventListener('keydown', (e) => {
+  if(!state.running || state.paused) return;
+  if(e.key === 'Escape'){ togglePause(true); return; }
+  const key = e.key;
+  if(key.length !== 1) {
+    if(e.key === 'Backspace') {
+      // ignore for this game (no typed buffer)
+    }
+    return;
+  }
+  const ch = key.toUpperCase();
+
+  // find candidate words whose next letter (letters[0]) equals ch
+  let candidates = state.words.filter(w => w.letters.length>0 && w.letters[0] === ch);
+  if(candidates.length === 0){
+    // optionally allow matching letters not at start: find word with first occurrence at index > 0
+    candidates = [];
+    for(const w of state.words){
+      const idx = w.letters.findIndex(l => l === ch);
+      if(idx !== -1) candidates.push({w, idx});
+    }
+    if(candidates.length>0){
+      // pick candidate whose word.y is largest (closest to bottom)
+      candidates.sort((a,b) => (b.w.y - a.w.y));
+      const choice = candidates[0];
+      // fire beam to that letter index
+      fireBeamToLetter(choice.w, choice.idx);
+      // mark a pending beam will remove letter when it reaches
+      return;
+    } else {
+      // no match anywhere; ignore
+      return;
+    }
+  } else {
+    // choose the candidate closest to bottom (largest y) — want to prioritize dangerous words
+    candidates.sort((a,b) => b.y - a.y);
+    const chosen = candidates[0];
+    // always target the first letter (index 0)
+    fireBeamToLetter(chosen, 0);
+  }
+});
+
+/* ---------- update loop ---------- */
+function update(dt){
+  // dt seconds
+  // spawn logic
+  state.lastSpawn += dt*1000;
+  const spawnEvery = Math.max(350, CONFIG.spawnInterval * Math.pow(0.95, state.level-1));
+  if(state.lastSpawn > spawnEvery){
+    spawnWord();
+    state.lastSpawn = 0;
+  }
+
+  // update words position
+  for(const w of state.words){
+    w.y += (w.speed * dt);
+  }
+  // words reaching bottom
+  for(let i = state.words.length - 1; i >= 0; i--){
+    const w = state.words[i];
+    if(w.y > innerHeight - 90){
+      // word reached bottom
+      spawnExplosion(w.x + 10, innerHeight - 90, '#ff7b7b');
+      state.words.splice(i,1);
+      state.hp -= 1;
+      document.getElementById('uiHp').textContent = state.hp;
+      if(state.hp <= 0) { gameOver(); return; }
+    }
+  }
+
+  // update beams
+  for(let i = state.beams.length - 1; i >= 0; i--){
+    const b = state.beams[i];
+    b.progress += b.speed;
+    if(b.progress >= 1){
+      // beam hits; find the word and remove the specific letter at letterIndex
+      const word = state.words.find(w => w.id === b.wordId);
+      if(word){
+        // safe guard: ensure index exists
+        if(b.letterIndex >= 0 && b.letterIndex < word.letters.length){
+          // remove that letter
+          const removed = word.letters.splice(b.letterIndex, 1);
+          // if removed letter was earlier in the word (index 0), okay. Otherwise we just delete that letter.
+          // Award points
+          const pts = Math.round(5 + (word.fontSize/2));
+          state.score += pts;
+          document.getElementById('uiScore').textContent = state.score;
+          // spawn small explosion at letter pos
+          spawnExplosion(b.tx, b.ty, '#7efcff');
+          // if word has no letters left -> full destroyed
+          if(word.letters.length === 0){
+            // remove whole word
+            const idx = state.words.findIndex(x => x.id === word.id);
+            if(idx !== -1) state.words.splice(idx,1);
+            // big explosion
+            spawnExplosion(b.tx, b.ty, '#fffa7a');
+            // level up logic
+            if(state.score > state.level * 200) {
+              state.level++;
+              document.getElementById('uiLevel').textContent = state.level;
+            }
+          }
+        }
+      }
+      // remove beam
+      state.beams.splice(i,1);
+    }
+  }
+
+  // update particles
+  for(let i = state.particles.length -1; i>=0; i--){
+    const p = state.particles[i];
+    p.age += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 300 * dt;
+    if(p.age >= p.life) state.particles.splice(i,1);
+  }
+}
+
+/* ---------- render loop ---------- */
+function drawBackground(now){
+  // fill space
+  ctx.fillStyle = '#030313';
+  ctx.fillRect(0,0,innerWidth, innerHeight);
+
+  // stars (twinkling)
+  for(let s of stars){
+    const blink = 0.6 + 0.4*Math.sin(now*0.002*s.tw);
+    ctx.fillStyle = `rgba(255,255,255,${blink})`;
+    ctx.beginPath(); ctx.arc(s.x, s.y + ( (now*0.01) % innerHeight )*0 % innerHeight, s.r, 0, Math.PI*2); ctx.fill();
+  }
+
+  // planets (slower parallax)
+  for(let p of planets){
+    // spin a subtle orbit by shifting x slightly
+    p.x += p.spin;
+    ctx.beginPath();
+    // soft glow
+    const g = ctx.createRadialGradient(p.x - 6, p.y - 6, p.r*0.1, p.x, p.y, p.r*1.6);
+    g.addColorStop(0, p.color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.arc(p.x, p.y, p.r*1.25, 0, Math.PI*2);
+    ctx.fill();
+    // planet body
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fill();
+    // ring
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, p.r*1.7, p.r*0.32, Math.PI*0.2, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // black hole (center-leftish)
+  const bx = innerWidth * blackHole.x;
+  const by = innerHeight * blackHole.y;
+  const br = blackHole.r;
+  const grad = ctx.createRadialGradient(bx,by,br*0.02,bx,by,br*1.6);
+  grad.addColorStop(0,'rgba(0,0,0,1)');
+  grad.addColorStop(0.4,'rgba(60,10,80,0.6)');
+  grad.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(bx,by,br*1.6,0,Math.PI*2); ctx.fill();
+
+  // accretion disk rings to make it visible
+  for(let i=0;i<6;i++){
+    ctx.beginPath();
+    ctx.ellipse(bx,by, br*(1.1 + i*0.16), br*0.28*(1 + i*0.04), 0, 0, Math.PI*2);
+    ctx.strokeStyle = `rgba(255,${30+i*20},${70 + i*10},0.06)`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+}
+
+function drawShip(){
+  const x = shipX(), y = shipY();
+  ctx.save();
+  ctx.translate(x,y);
+  // glowing base
+  ctx.beginPath(); ctx.arc(0,0,26,0,Math.PI*2); ctx.fillStyle='rgba(0,230,255,0.03)'; ctx.fill();
+  // triangle
+  ctx.beginPath(); ctx.moveTo(0,-20); ctx.lineTo(-18,14); ctx.lineTo(18,14); ctx.closePath();
+  ctx.fillStyle = '#7efcff'; ctx.shadowColor = '#7efcff'; ctx.shadowBlur = 18; ctx.fill();
+  // inner tri
+  ctx.beginPath(); ctx.moveTo(0,-12); ctx.lineTo(-10,8); ctx.lineTo(10,8); ctx.closePath();
+  ctx.fillStyle = '#001f25'; ctx.fill();
+  ctx.restore();
+}
+
+function drawWords(){
+  for(const w of state.words){
+    ctx.save();
+    ctx.font = `600 ${w.fontSize}px Inter, Arial`;
+    ctx.textBaseline = 'middle';
+    // measure and draw each letter with a colored matched portion concept
+    let x = w.x;
+    let y = w.y;
+    // draw tag glow background for readability
+    const text = w.letters.join('');
+    const width = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(x-10, y - w.fontSize/1.6, width + 20, w.fontSize*1.1);
+    // draw letters individually
+    for(let i=0;i<w.letters.length;i++){
+      const ch = w.letters[i];
+      const chW = ctx.measureText(ch).width;
+      // bright neon for letters, slight glow
+      ctx.shadowBlur = 12; ctx.shadowColor = '#00e5ff';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(ch, x + chW/2, y);
+      // stroke to accent
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.8;
+      ctx.strokeText(ch, x + chW/2, y);
+      x += chW;
+    }
+    ctx.restore();
+  }
+}
+
+function drawBeams(){
+  for(const b of state.beams){
+    // beam path from x0,y0 to tx,ty using progress p
+    const p = b.progress;
+    // ease-in-out
+    const ease = p<0.5 ? (2*p*p) : (1 - Math.pow(-2*p+2, 2)/2);
+    const cx = b.x0 + (b.tx - b.x0) * ease;
+    const cy = b.y0 + (b.ty - b.y0) * ease;
+    // tail and glow
+    ctx.save();
+    const grad = ctx.createLinearGradient(b.x0,b.y0, b.tx,b.ty);
+    grad.addColorStop(0, 'rgba(126,252,255,0.12)');
+    grad.addColorStop(0.6, 'rgba(126,252,255,0.6)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 3 + (1.5*(1 - Math.abs(0.5 - p)));
+    ctx.shadowColor = '#7efcff';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    // we draw a slight curve using quadratic
+    const mx = b.x0 + (b.tx - b.x0) * 0.5;
+    const my = b.y0 - 160 * (0.5 - p); // curve amplitude reduces as it approaches
+    ctx.moveTo(b.x0, b.y0);
+    ctx.quadraticCurveTo(mx, my, cx, cy);
+    ctx.stroke();
+
+    // small head glow
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.arc(cx, cy, 3 + 3*(1 - Math.abs(0.5 - p)), 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawParticles(){
+  for(const p of state.particles){
+    const life = 1 - (p.age / p.life);
+    ctx.globalAlpha = life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 2 + 4*life, 2 + 4*life);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ---------- main render ---------- */
+function render(now){
+  drawBackground(now);
+  drawWords();
+  drawBeams();
+  drawParticles();
+  drawShip();
+}
+
+/* ---------- game loop ---------- */
+let rafId = null;
+function tick(ts){
+  const now = ts || performance.now();
+  const dt = Math.min(0.05, (now - state.lastTime) / 1000);
+  state.lastTime = now;
+  if(state.running && !state.paused){
+    update(dt);
+    render(now);
+  } else {
+    // still draw background and ship so UI looks alive
+    render(now);
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
+/* ---------- start / pause / gameover ---------- */
+function startGame(){
+  // reset
+  state.words = [];
+  state.beams = [];
+  state.particles = [];
+  state.lastSpawn = 0;
+  state.lastTime = performance.now();
+  state.score = 0;
+  state.hp = CONFIG.hp;
+  state.level = 1;
+  document.getElementById('uiScore').textContent = state.score;
+  document.getElementById('uiHp').textContent = state.hp;
+  document.getElementById('uiLevel').textContent = state.level;
+  state.running = true;
+  state.paused = false;
+  document.getElementById('menuStart').style.display = 'none';
+  document.getElementById('menuPause').style.display = 'none';
+  document.getElementById('menuGameOver').style.display = 'none';
+  document.getElementById('menuLB').style.display = 'none';
+  document.getElementById('menuHow').style.display = 'none';
+  document.getElementById('overlay').style.pointerEvents = 'none';
+  state.lastTime = performance.now();
+  // warm spawn
+  for(let i=0;i<2;i++) spawnWord();
+  if(!rafId) tick();
+}
+
+function togglePause(force){
+  state.paused = force !== undefined ? force : !state.paused;
+  if(state.paused){
+    document.getElementById('menuPause').style.display = 'block';
+    document.getElementById('overlay').style.pointerEvents = 'auto';
+  } else {
+    document.getElementById('menuPause').style.display = 'none';
+    document.getElementById('overlay').style.pointerEvents = 'none';
+  }
+}
+
+function gameOver(){
+  state.running = false;
+  state.paused = false;
+  document.getElementById('menuGameOver').style.display = 'block';
+  document.getElementById('overlay').style.pointerEvents = 'auto';
+  document.getElementById('gameOverSummary').textContent = `Score: ${state.score} • Level: ${state.level}`;
+}
+
+/* ---------- leaderboard ---------- */
+const LB_KEY = 'neon_ztype_lb_v1';
+function loadLB(){ const raw = localStorage.getItem(LB_KEY); return raw ? JSON.parse(raw) : []; }
+function saveLB(list){ localStorage.setItem(LB_KEY, JSON.stringify(list.slice(0,50))); }
+function addLB(name, score){
+  const list = loadLB();
+  list.push({name,score,date:new Date().toISOString()});
+  list.sort((a,b)=>b.score - a.score);
+  saveLB(list);
+}
+function showLB(){
+  const list = loadLB();
+  const ol = document.getElementById('leaderList');
+  ol.innerHTML = '';
+  list.slice(0,20).forEach((p,i)=>{
+    const li = document.createElement('li'); li.textContent = `${i+1}. ${p.name} — ${p.score}`; ol.appendChild(li);
+  });
+  document.getElementById('menuLB').style.display = 'block';
+  document.getElementById('overlay').style.pointerEvents = 'auto';
+}
+
+/* ---------- UI bindings ---------- */
+document.getElementById('btnStart').addEventListener('click', ()=> startGame());
+document.getElementById('playLarge').addEventListener('click', ()=> startGame());
+document.getElementById('btnPause').addEventListener('click', ()=> togglePause());
+document.getElementById('resumeBtn').addEventListener('click', ()=> togglePause(false));
+document.getElementById('restartBtn').addEventListener('click', ()=> startGame());
+document.getElementById('btnLB').addEventListener('click', ()=> { showLB(); });
+document.getElementById('lbClose').addEventListener('click', ()=> { document.getElementById('menuLB').style.display = 'none'; document.getElementById('overlay').style.pointerEvents = 'none'; });
+document.getElementById('howBtn').addEventListener('click', ()=> { document.getElementById('menuHow').style.display = 'block'; document.getElementById('overlay').style.pointerEvents = 'auto'; });
+document.getElementById('howClose').addEventListener('click', ()=> { document.getElementById('menuHow').style.display = 'none'; document.getElementById('overlay').style.pointerEvents = 'none'; });
+document.getElementById('saveScore').addEventListener('click', ()=>{
+  const name = (document.getElementById('playerName').value || 'Player').slice(0,12);
+  addLB(name, state.score);
+  document.getElementById('menuGameOver').style.display = 'none';
+  document.getElementById('menuStart').style.display = 'block';
+});
+document.getElementById('toMenu').addEventListener('click', ()=>{
+  document.getElementById('menuGameOver').style.display = 'none';
+  document.getElementById('menuStart').style.display = 'block';
+  document.getElementById('overlay').style.pointerEvents = 'auto';
+});
+document.getElementById('btnMute').addEventListener('click', ()=>{
+  state.mute = !state.mute;
+  document.getElementById('btnMute').textContent = state.mute ? 'Unmute' : 'Mute';
+});
+
+/* ---------- initial tick ---------- */
+state.lastTime = performance.now();
+tick();
+
+/* ---------- minor: focus to capture keyboard on touch devices ---------- */
+canvas.addEventListener('pointerdown', ()=> {
+  // resume audio context on first tap/gesture (autoplay policy)
+  if(AudioCtx && !audioCtx) try { ensureAudio(); audioCtx.resume && audioCtx.resume(); } catch(e){}
+  canvas.tabIndex = -1; canvas.focus();
+});
+
+/* ---------- small helper to keep visual positioning consistent ---------- */
+/* We re-compute direct letter positions every render when firing beams.
+   But when rendering letters we used measureText; to compute target positions for beams we replicate logic in drawWords.
+   For a smooth beam target we computed in fireBeamToLetter using measureText before; keep that accessible by storing letter shapes in word object.
+*/
+
+function computeLetterPositions(word){
+  // compute start x/y and widths for each letter
+  ctx.save();
+  ctx.font = `600 ${word.fontSize}px Inter, Arial`;
+  let pos = [];
+  let x = word.x;
+  for(let i=0;i<word.letters.length;i++){
+    const ch = word.letters[i];
+    const w = ctx.measureText(ch).width;
+    pos.push({x: x + w/2, y: word.y - (word.fontSize/4), w});
+    x += w;
+  }
+  ctx.restore();
+  return pos;
+}
+
+/* We need an enhanced fireBeamToLetter that calculates target live (word may move while beam in flight).
+   Replace earlier simpler version with one that stores word id + letter index, and beam resolves by computing target position dynamically in render.
+*/
+function fireBeamToLetter(word, letterIndex){
+  // add new beam with dynamic target resolution
+  const b = {
+    x0: shipX(), y0: shipY()-8,
+    progress: 0,
+    speed: 0.02 + Math.random()*0.015,
+    wordId: word.id,
+    letterIndex,
+    color: '#7efcff'
+  };
+  state.beams.push(b);
+  playShot();
+}
+
+/* Replace drawBeams to compute the target using computeLetterPositions at each frame */
+function drawBeams(){
+  for(const b of state.beams){
+    // find associated word
+    const word = state.words.find(w => w.id === b.wordId);
+    if(!word) {
+      // if word gone, advance progress quickly and remove soon
+      b.progress += b.speed*1.8;
+      if(b.progress >= 1) {
+        // remove
+        const idx = state.beams.indexOf(b); if(idx>=0) state.beams.splice(idx,1);
+      }
+      continue;
+    }
+    // compute dynamic target
+    const letterPositions = computeLetterPositions(word);
+    // if letter index out of range (maybe letter already removed), adjust to nearest index or cancel
+    if(b.letterIndex >= letterPositions.length){
+      // try to clamp
+      if(letterPositions.length === 0) {
+        // remove word and beam
+        const wi = state.words.findIndex(w=>w.id===word.id);
+        if(wi>=0) state.words.splice(wi,1);
+        const bi = state.beams.indexOf(b); if(bi>=0) state.beams.splice(bi,1);
+        continue;
+      } else b.letterIndex = Math.max(0, letterPositions.length - 1);
+    }
+    const target = letterPositions[b.letterIndex];
+    if(!target) continue;
+    const tx = target.x, ty = target.y;
+    // progress and ease
+    const p = b.progress;
+    const ease = p<0.5 ? (2*p*p) : (1 - Math.pow(-2*p+2, 2)/2);
+    const cx = b.x0 + (tx - b.x0) * ease;
+    const cy = b.y0 + (ty - b.y0) * ease;
+    // draw curve
+    ctx.save();
+    const grad = ctx.createLinearGradient(b.x0,b.y0, tx,ty);
+    grad.addColorStop(0, 'rgba(126,252,255,0.06)');
+    grad.addColorStop(0.5, 'rgba(126,252,255,0.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 3 + 2*(1 - Math.abs(0.5 - p));
+    ctx.shadowColor = '#7efcff';
+    ctx.shadowBlur = 16;
+    // curved path control point
+    const mx = b.x0 + (tx - b.x0) * 0.5;
+    const my = b.y0 - 160 * (0.5 - p);
+    ctx.beginPath();
+    ctx.moveTo(b.x0, b.y0);
+    ctx.quadraticCurveTo(mx, my, cx, cy);
+    ctx.stroke();
+    // head
+    ctx.beginPath();
+    ctx.fillStyle = '#ffffff';
+    ctx.arc(cx, cy, 3 + 3*(1 - Math.abs(0.5 - p)), 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // update progress
+    b.progress += b.speed;
+
+    // on hit (progress >=1) resolve removal in update loop (we do final removal here too)
+    if(b.progress >= 1){
+      // remove letter from the associated word (if present)
+      const wi = state.words.findIndex(w=>w.id===word.id);
+      if(wi !== -1){
+        const wobj = state.words[wi];
+        if(b.letterIndex >= 0 && b.letterIndex < wobj.letters.length){
+          // remove that letter
+          wobj.letters.splice(b.letterIndex, 1);
+          state.score += Math.round(6 + wobj.fontSize/2);
+          document.getElementById('uiScore').textContent = state.score;
+          spawnExplosion(tx, ty, '#7efcff');
+          if(wobj.letters.length === 0){
+            // remove whole word
+            state.words.splice(wi,1);
+            spawnExplosion(tx, ty, '#fffa7a');
+            if(state.score > state.level * 200){
+              state.level++;
+              document.getElementById('uiLevel').textContent = state.level;
+            }
+          }
+        }
+      }
+      const bi = state.beams.indexOf(b); if(bi>=0) state.beams.splice(bi,1);
+    }
+  }
+}
+
+/* ---------- improved drawWords: align letters and update stored base x ---------- */
+function drawWords(){
+  for(const w of state.words){
+    ctx.save();
+    ctx.font = `600 ${w.fontSize}px Inter, Arial`;
+    ctx.textBaseline = 'middle';
+    // ensure the base x is clamped to within screen (so letters visible)
+    const text = w.letters.join('');
+    const width = ctx.measureText(text).width;
+    const pad = 16;
+    // if word would overflow on right, shift left
+    let baseX = w.x;
+    if(baseX + width + pad > innerWidth) baseX = innerWidth - width - pad;
+    if(baseX < pad) baseX = pad;
+    w.x = baseX; // update for beam calculations
+    const y = w.y;
+    // draw slightly darker background to improve contrast
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(baseX - 8, y - w.fontSize/1.6, width + 16, w.fontSize*1.1);
+    // draw letters
+    let xCursor = baseX;
+    for(let i=0;i<w.letters.length;i++){
+      const ch = w.letters[i];
+      const chW = ctx.measureText(ch).width;
+      ctx.shadowBlur = 12; ctx.shadowColor = '#00e5ff';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(ch, xCursor + chW/2, y);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.8;
+      ctx.strokeText(ch, xCursor + chW/2, y);
+      xCursor += chW;
+    }
+    ctx.restore();
+  }
+}
+
+/* Replace previous references to drawBeams & drawWords used earlier */
+function render(now){
+  drawBackground(now);
+  drawWords();
+  drawBeams();
+  drawParticles();
+  drawShip();
+}
+
+/* ---------- start with a few pre-spawns ---------- */
+for(let i=0;i<3;i++) spawnWord();
+
+/* ---------- helper: ensure canvas focus cursor on first touch to capture keys ---------- */
+window.addEventListener('pointerdown', ()=>{
+  if(AudioCtx && !audioCtx) ensureAudio();
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume && audioCtx.resume();
+});
+
+/* ---------- done ---------- */
+
+</script>
+</body>
+</html>
